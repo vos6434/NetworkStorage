@@ -18,10 +18,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up JDK 21
+      # Paper API for this pom is newer bytecode than JDK 21 can compile against; bytecode target stays 21 in pom.xml.
+      - name: Set up JDK 25
         uses: actions/setup-java@v4
         with:
-          java-version: "21"
+          java-version: "25"
           distribution: temurin
           cache: maven
 
