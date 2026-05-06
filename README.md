@@ -81,8 +81,8 @@ The following builds on top of [DerMoha/NetworkStorage](https://github.com/DerMo
 
 ### Resource pack and tooling
 
-* Optional **resource pack** sources under `resourcepacks/networkstorage-test-gui/` (GUI font, terminal controls, wand/wireless/terminal models; Minecraft **1.21.x** pack format). Scripts help build/copy without overwriting your custom PNGs when regenerating.
-* PowerShell **build / install / dev-server / resource-pack** scripts at repo root; VS Code task for rebuild + **visible** Paper console.
+* Optional **resource pack** sources under `resourcepacks/networkstorage-test-gui/` (GUI font, terminal controls, wand/wireless/terminal models; Minecraft **1.21.x** pack format). Zip that folder’s contents for use in-game (see `resourcepacks/networkstorage-test-gui/README.md`).
+* VS Code **build** task runs Maven against `NetworkStorage/pom.xml`.
 
 ### Repository layout (monorepo)
 
@@ -90,13 +90,17 @@ The following builds on top of [DerMoha/NetworkStorage](https://github.com/DerMo
 |------|-----------|
 | `NetworkStorage/` | Maven Paper plugin (`pom.xml`, `src/`) |
 | `resourcepacks/networkstorage-test-gui/` | Resource pack sources |
-| `*.ps1` | Build and development helpers |
 
-From the repo root (PowerShell):
+### Build
 
-```powershell
-.\build-plugin.ps1
-.\install-plugin.ps1
+Requires JDK 21 and Maven on your `PATH`.
+
+From the repository root:
+
+```bash
+mvn -f NetworkStorage/pom.xml clean package
 ```
+
+The shaded plugin jar is written to `NetworkStorage/target/` (exact name matches `pom.xml` version). Copy it into your Paper server’s `plugins/` directory.
 
 `dev-server/` and `tools/` are local-only (ignored by Git). Plugin runtime config and `player-state.yml` live under `plugins/NetworkStorage/` on your server.

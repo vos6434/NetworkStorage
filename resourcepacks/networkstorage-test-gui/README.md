@@ -7,4 +7,4 @@ The plugin opens the terminal inventory with the `networkstorage:terminal` font 
 - `\uE000` is a negative spacer.
 - `\uE100` is the test terminal background bitmap.
 
-Run `..\..\create-test-resource-pack.ps1` from the workspace root to regenerate the texture, zip this pack, and copy it into your Minecraft resource packs folder.
+Zip this directory’s contents (keep `pack.mcmeta` at the root of the zip) and place the zip in Minecraft’s `resourcepacks` folder. Enable the pack in the resource packs menu.

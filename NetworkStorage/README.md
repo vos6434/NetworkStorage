@@ -4,9 +4,10 @@ Maven project for the Paper plugin.
 
 Full documentation—including the upstream readme text and **fork changes**—is in the [**repository root README**](../README.md).
 
-Build from monorepo root:
+Build from the repository root:
 
-```powershell
-cd ..
-.\build-plugin.ps1
+```bash
+mvn -f NetworkStorage/pom.xml clean package
 ```
+
+Or `cd NetworkStorage` then `mvn clean package`.
