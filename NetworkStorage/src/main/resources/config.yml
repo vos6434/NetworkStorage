@@ -1,0 +1,104 @@
+# NetworkStorage Plugin Configuration
+
+# The mode of operation for networks. Can be one of:
+# PLAYER: Each player has their own separate network.
+# GLOBAL: There is only one, server-wide network that all players share.
+network-mode: PLAYER
+
+# Maximum number of chests per network
+max-chests-per-network: 100
+
+# Maximum number of terminals per network
+max-terminals-per-network: 100
+
+# Maximum number of sender chests per network
+max-sender-chests-per-network: 100
+
+# The interval in seconds at which sender chests are checked and their contents moved to the main network.
+# Lower values mean faster transfers but may increase server load.
+sender-chest-transfer-interval-seconds: 5
+
+# Auto-save interval in minutes
+auto-save-interval-minutes: 5
+
+# Enable permissions system
+enable-permissions: true
+
+# Enable the trust system (only used in PLAYER mode). If false, anyone can access any network.
+# This controls terminal and wireless access. Protect physical chest blocks with your server's
+# normal land-claim/protection plugin if players should not open storage chests directly.
+enable-trust-system: true
+
+# Item materials used for plugin tools. Must be valid Bukkit Material names.
+wand-material: STICK
+wireless-terminal-material: COMPASS
+
+# Block type used for access terminals. Must be a valid Bukkit Material name.
+# CHEST and TRAPPED_CHEST are always supported regardless of this setting.
+terminal-block-type: OAK_SHELF
+
+# Enables the resource-pack based Storage Network Terminal GUI.
+# Install the NetworkStorage resource pack on the client to see it.
+custom-terminal-gui:
+  enabled: true
+
+# Langauge for Plugin-messages (de or en)
+language: en
+
+# Custom model data values used for optional resource-pack overrides.
+# Set any entry to a blank value to disable that override.
+# Storage wands and wireless terminals must be issued by this plugin. Renamed legacy items
+# are intentionally not accepted, because they cannot be distinguished from forged items.
+custom-model-data:
+  wireless-terminal: 10001
+  wand: 10002
+  terminal-block: 10003
+  gui:
+    terminal:
+      prev-page: 10101
+      next-page: 10102
+      search: 10103
+      sort: 10104
+      info: 10105
+      stats: 10106
+      refresh: 10107
+      page-indicator: 10108
+    stats:
+      back: 10201
+    network-select:
+      item: 10301
+    wireless-select:
+      item: 10401
+
+storage-wand-recipe:
+  shape:
+    - " C"
+    - "S "
+  ingredients:
+    C: "CHEST"
+    S: "STICK"
+
+storage-terminal-recipe:
+  shape:
+    - "PRP"
+    - "CGL"
+    - "PRP"
+  ingredients:
+    P: "PLANKS"
+    R: "REPEATER"
+    C: "CHEST"
+    G: "GLOWSTONE"
+    L: "GLASS"
+
+wireless-terminal-recipe:
+  shape:
+    - "PRP"
+    - "CGL"
+    - "PEP"
+  ingredients:
+    P: "PLANKS"
+    R: "REPEATER"
+    C: "CHEST"
+    G: "GLOWSTONE"
+    L: "GLASS"
+    E: "ENDER_PEARL"

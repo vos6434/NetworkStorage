@@ -1,0 +1,19 @@
+{
+  "model": {
+    "type": "minecraft:range_dispatch",
+    "property": "minecraft:custom_model_data",
+    "entries": [
+      {
+        "threshold": 10003,
+        "model": {
+          "type": "minecraft:model",
+          "model": "networkstorage:item/storage_terminal_inventory"
+        }
+      }
+    ],
+    "fallback": {
+      "type": "minecraft:model",
+      "model": "minecraft:block/oak_shelf_inventory"
+    }
+  }
+}

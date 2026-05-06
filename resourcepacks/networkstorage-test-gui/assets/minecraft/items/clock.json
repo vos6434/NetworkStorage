@@ -1,0 +1,19 @@
+{
+  "model": {
+    "type": "minecraft:range_dispatch",
+    "property": "minecraft:custom_model_data",
+    "entries": [
+      {
+        "threshold": 10107,
+        "model": {
+          "type": "minecraft:model",
+          "model": "networkstorage:item/gui/terminal/refresh"
+        }
+      }
+    ],
+    "fallback": {
+      "type": "minecraft:model",
+      "model": "minecraft:item/clock"
+    }
+  }
+}

@@ -1,0 +1,555 @@
+package com.dermoha.networkstorage;
+
+import com.dermoha.networkstorage.commands.NetworkCommand;
+import com.dermoha.networkstorage.commands.NetworkStorageAdminCommand;
+import com.dermoha.networkstorage.commands.StorageCommand;
+import com.dermoha.networkstorage.gui.NetworkSelectGUI;
+import com.dermoha.networkstorage.gui.StatsGUI;
+import com.dermoha.networkstorage.gui.TerminalGUI;
+import com.dermoha.networkstorage.gui.WirelessNetworkSelectGUI;
+import com.dermoha.networkstorage.listeners.ChestInteractListener;
+import com.dermoha.networkstorage.listeners.RecipeDiscoveryListener;
+import com.dermoha.networkstorage.listeners.WandListener;
+import com.dermoha.networkstorage.listeners.WirelessTerminalListener;
+import com.dermoha.networkstorage.managers.ConfigManager;
+import com.dermoha.networkstorage.managers.LanguageManager;
+import com.dermoha.networkstorage.managers.NetworkManager;
+import com.dermoha.networkstorage.managers.SearchManager;
+import com.dermoha.networkstorage.storage.Network;
+import com.dermoha.networkstorage.util.TerminalItemUtils;
+import org.bukkit.Bukkit;
+import org.bukkit.entity.Player;
+import org.bukkit.event.HandlerList;
+import org.bukkit.Location;
+import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
+import org.bukkit.block.Chest;
+import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.RecipeChoice;
+import org.bukkit.inventory.ShapedRecipe;
+import org.bukkit.plugin.java.JavaPlugin;
+import org.bstats.bukkit.Metrics;
+import org.bstats.charts.SimplePie;
+import org.bstats.charts.SingleLineChart;
+
+import java.util.Arrays;
+import java.util.List;
+import java.util.Set;
+import java.util.Iterator;
+
+public class NetworkStoragePlugin extends JavaPlugin {
+
+    private static final int BSTATS_PLUGIN_ID = 28228;
+
+    private static NetworkStoragePlugin instance;
+    private NetworkManager networkManager;
+    private ConfigManager configManager;
+    private SearchManager searchManager;
+    private LanguageManager languageManager;
+    private ChestInteractListener chestInteractListener;
+    private WandListener wandListener;
+    private WirelessTerminalListener wirelessTerminalListener;
+    private RecipeDiscoveryListener recipeDiscoveryListener;
+    private StorageCommand storageCommand;
+    private NetworkCommand networkCommand;
+    private NetworkStorageAdminCommand adminCommand;
+    private int senderChestTaskId = -1;
+    private int autoSaveTaskId = -1;
+    private static final String WAND_RECIPE_KEY = "storage_wand";
+    private static final String WIRELESS_RECIPE_KEY = "wireless_terminal";
+    private static final String TERMINAL_RECIPE_KEY = "storage_terminal";
+    private static final List<Material> PLANK_MATERIALS = Arrays.stream(Material.values())
+            .filter(material -> material.name().endsWith("_PLANKS"))
+            .toList();
+
+    @Override
+    public void onEnable() {
+        instance = this;
+        createManagers();
+        initializeMetrics();
+        registerCommands();
+        registerListeners();
+        registerRecipes();
+        startTasks();
+
+        getLogger().info("NetworkStorage Plugin has been enabled!");
+    }
+
+    @Override
+    public void onDisable() {
+        if (networkManager != null) {
+            networkManager.saveAllNetworks();
+        }
+        closePluginInventories();
+        unregisterRuntimeComponents();
+        cancelScheduledTasks();
+        getLogger().info("NetworkStorage Plugin has been disabled!");
+    }
+
+    public void reload() {
+        networkManager.saveAllNetworks();
+        closePluginInventories();
+        cancelScheduledTasks();
+        unregisterRuntimeComponents();
+        createManagers();
+        registerCommands();
+        registerListeners();
+        registerRecipes();
+        startTasks();
+    }
+
+    private void createManagers() {
+        configManager = new ConfigManager(this);
+        languageManager = new LanguageManager(this, configManager.getLanguage());
+        networkManager = new NetworkManager(this);
+    }
+
+    private void initializeMetrics() {
+        Metrics metrics = new Metrics(this, BSTATS_PLUGIN_ID);
+        metrics.addCustomChart(new SimplePie("network_mode", () -> configManager.getNetworkMode().name().toLowerCase()));
+        metrics.addCustomChart(new SingleLineChart("tracked_chests", this::getTrackedChestCount));
+        metrics.addCustomChart(new SingleLineChart("stored_items", this::getStoredItemCount));
+    }
+
+    private int getTrackedChestCount() {
+        int trackedChestCount = 0;
+        for (Network network : networkManager.getAllNetworks()) {
+            trackedChestCount += network.getChestLocations().size();
+            trackedChestCount += network.getSenderChestLocations().size();
+        }
+        return trackedChestCount;
+    }
+
+    private int getStoredItemCount() {
+        long storedItemCount = 0;
+        for (Network network : networkManager.getAllNetworks()) {
+            for (int amount : network.getNetworkItems().values()) {
+                storedItemCount += amount;
+            }
+        }
+        return (int) Math.min(Integer.MAX_VALUE, storedItemCount);
+    }
+
+    private void registerCommands() {
+        storageCommand = new StorageCommand(this);
+        networkCommand = new NetworkCommand(this);
+        adminCommand = new NetworkStorageAdminCommand(this);
+
+        getCommand("storage").setExecutor(storageCommand);
+        getCommand("storage").setTabCompleter(storageCommand);
+        getCommand("network").setExecutor(networkCommand);
+        getCommand("network").setTabCompleter(networkCommand);
+        getCommand("networkstorage").setExecutor(adminCommand);
+    }
+
+    private void registerListeners() {
+        chestInteractListener = new ChestInteractListener(this);
+        wandListener = new WandListener(this);
+        wirelessTerminalListener = new WirelessTerminalListener(this);
+        searchManager = new SearchManager(this);
+
+        getServer().getPluginManager().registerEvents(chestInteractListener, this);
+        getServer().getPluginManager().registerEvents(wandListener, this);
+        getServer().getPluginManager().registerEvents(wirelessTerminalListener, this);
+        recipeDiscoveryListener = new RecipeDiscoveryListener(this);
+        getServer().getPluginManager().registerEvents(recipeDiscoveryListener, this);
+    }
+
+    private void startTasks() {
+        startSenderChestTask();
+        startAutoSaveTask();
+    }
+
+    private void unregisterRuntimeComponents() {
+        if (searchManager != null) {
+            searchManager.cleanup();
+            HandlerList.unregisterAll(searchManager);
+            searchManager = null;
+        }
+        if (chestInteractListener != null) {
+            chestInteractListener.clearRuntimeState();
+            HandlerList.unregisterAll(chestInteractListener);
+            chestInteractListener = null;
+        }
+        if (wandListener != null) {
+            HandlerList.unregisterAll(wandListener);
+            wandListener = null;
+        }
+        if (wirelessTerminalListener != null) {
+            HandlerList.unregisterAll(wirelessTerminalListener);
+            wirelessTerminalListener = null;
+        }
+        if (recipeDiscoveryListener != null) {
+            HandlerList.unregisterAll(recipeDiscoveryListener);
+            recipeDiscoveryListener = null;
+        }
+    }
+
+    private void closePluginInventories() {
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            if (player.getOpenInventory() == null) {
+                continue;
+            }
+
+            Inventory topInventory = player.getOpenInventory().getTopInventory();
+            if (topInventory == null) {
+                continue;
+            }
+
+            Object holder = topInventory.getHolder();
+            if (holder instanceof TerminalGUI
+                    || holder instanceof StatsGUI
+                    || holder instanceof NetworkSelectGUI
+                    || holder instanceof WirelessNetworkSelectGUI) {
+                player.closeInventory();
+            }
+        }
+    }
+
+    private void cancelScheduledTasks() {
+        if (senderChestTaskId != -1) {
+            getServer().getScheduler().cancelTask(senderChestTaskId);
+            senderChestTaskId = -1;
+        }
+        if (autoSaveTaskId != -1) {
+            getServer().getScheduler().cancelTask(autoSaveTaskId);
+            autoSaveTaskId = -1;
+        }
+    }
+
+    private void registerRecipes() {
+        registerWandRecipe();
+        registerTerminalRecipe();
+        registerWirelessRecipe();
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            discoverPluginRecipes(player);
+        }
+    }
+
+    public void discoverPluginRecipes(Player player) {
+        discoverRecipeIfMissing(player, new NamespacedKey(this, WAND_RECIPE_KEY));
+        discoverRecipeIfMissing(player, new NamespacedKey(this, TERMINAL_RECIPE_KEY));
+        discoverRecipeIfMissing(player, new NamespacedKey(this, WIRELESS_RECIPE_KEY));
+    }
+
+    private void discoverRecipeIfMissing(Player player, NamespacedKey key) {
+        if (!player.hasDiscoveredRecipe(key)) {
+            player.discoverRecipe(key);
+        }
+    }
+
+    private void registerWandRecipe() {
+        NamespacedKey key = new NamespacedKey(this, WAND_RECIPE_KEY);
+        getServer().removeRecipe(key);
+        if (!tryRegisterWandRecipe(key, getConfiguredWandRecipeShape(), true)) {
+            getLogger().warning("Falling back to the default storage wand recipe.");
+            getServer().removeRecipe(key);
+            tryRegisterWandRecipe(key, getDefaultWandRecipeShape(), false);
+        }
+    }
+
+    private void registerTerminalRecipe() {
+        NamespacedKey key = new NamespacedKey(this, TERMINAL_RECIPE_KEY);
+        getServer().removeRecipe(key);
+        if (!tryRegisterTerminalRecipe(key, getConfiguredTerminalRecipeShape(), true)) {
+            getLogger().warning("Falling back to the default storage terminal recipe.");
+            getServer().removeRecipe(key);
+            tryRegisterTerminalRecipe(key, getDefaultTerminalRecipeShape(), false);
+        }
+    }
+
+    private void registerWirelessRecipe() {
+        NamespacedKey key = new NamespacedKey(this, WIRELESS_RECIPE_KEY);
+        getServer().removeRecipe(key);
+        if (!tryRegisterWirelessRecipe(key, getConfiguredWirelessRecipeShape(), true)) {
+            getLogger().warning("Falling back to the default wireless terminal recipe.");
+            getServer().removeRecipe(key);
+            tryRegisterWirelessRecipe(key, getDefaultWirelessRecipeShape(), false);
+        }
+    }
+
+    private boolean tryRegisterWandRecipe(NamespacedKey key, String[] shape, boolean useConfiguredIngredients) {
+        try {
+            ShapedRecipe recipe = new ShapedRecipe(key, WandListener.createStorageWand(this));
+            recipe.shape(shape);
+            if (useConfiguredIngredients) {
+                applyConfiguredWandRecipeIngredients(recipe);
+            } else {
+                applyDefaultWandRecipeIngredients(recipe);
+            }
+            if (!getServer().addRecipe(recipe)) {
+                getLogger().warning("Storage wand recipe could not be registered.");
+                return false;
+            }
+            return true;
+        } catch (IllegalArgumentException e) {
+            getLogger().warning("Invalid storage wand recipe config: " + e.getMessage());
+            return false;
+        }
+    }
+
+    private boolean tryRegisterTerminalRecipe(NamespacedKey key, String[] shape, boolean useConfiguredIngredients) {
+        try {
+            ShapedRecipe recipe = new ShapedRecipe(key, TerminalItemUtils.createTerminalItem(this));
+            recipe.shape(shape);
+            if (useConfiguredIngredients) {
+                applyConfiguredTerminalRecipeIngredients(recipe);
+            } else {
+                applyDefaultTerminalRecipeIngredients(recipe);
+            }
+            if (!getServer().addRecipe(recipe)) {
+                getLogger().warning("Storage terminal recipe could not be registered.");
+                return false;
+            }
+            return true;
+        } catch (IllegalArgumentException e) {
+            getLogger().warning("Invalid storage terminal recipe config: " + e.getMessage());
+            return false;
+        }
+    }
+
+    private boolean tryRegisterWirelessRecipe(NamespacedKey key, String[] shape, boolean useConfiguredIngredients) {
+        try {
+            ShapedRecipe recipe = new ShapedRecipe(key, WirelessTerminalListener.createWirelessTerminal(this));
+            recipe.shape(shape);
+            if (useConfiguredIngredients) {
+                applyConfiguredWirelessRecipeIngredients(recipe);
+            } else {
+                applyDefaultWirelessRecipeIngredients(recipe);
+            }
+            if (!getServer().addRecipe(recipe)) {
+                getLogger().warning("Wireless terminal recipe could not be registered.");
+                return false;
+            }
+            return true;
+        } catch (IllegalArgumentException e) {
+            getLogger().warning("Invalid wireless terminal recipe config: " + e.getMessage());
+            return false;
+        }
+    }
+
+    private String[] getConfiguredWirelessRecipeShape() {
+        List<String> shape = getConfig().getStringList("wireless-terminal-recipe.shape");
+        if (shape.isEmpty()) {
+            return getDefaultWirelessRecipeShape();
+        }
+        if (!isValidRecipeShape(shape)) {
+            getLogger().warning("Invalid wireless terminal recipe shape; using default shape.");
+            return getDefaultWirelessRecipeShape();
+        }
+        return shape.toArray(new String[0]);
+    }
+
+    private String[] getConfiguredWandRecipeShape() {
+        List<String> shape = getConfig().getStringList("storage-wand-recipe.shape");
+        if (shape.isEmpty()) {
+            return getDefaultWandRecipeShape();
+        }
+        if (!isValidRecipeShape(shape)) {
+            getLogger().warning("Invalid storage wand recipe shape; using default shape.");
+            return getDefaultWandRecipeShape();
+        }
+        return shape.toArray(new String[0]);
+    }
+
+    private String[] getConfiguredTerminalRecipeShape() {
+        List<String> shape = getConfig().getStringList("storage-terminal-recipe.shape");
+        if (shape.isEmpty()) {
+            return getDefaultTerminalRecipeShape();
+        }
+        if (!isValidRecipeShape(shape)) {
+            getLogger().warning("Invalid storage terminal recipe shape; using default shape.");
+            return getDefaultTerminalRecipeShape();
+        }
+        return shape.toArray(new String[0]);
+    }
+
+    private boolean isValidRecipeShape(List<String> shape) {
+        if (shape.isEmpty() || shape.size() > 3) {
+            return false;
+        }
+        int width = shape.get(0).length();
+        if (width == 0 || width > 3) {
+            return false;
+        }
+        for (String row : shape) {
+            if (row == null || row.length() != width) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private void applyConfiguredWirelessRecipeIngredients(ShapedRecipe recipe) {
+        ConfigurationSection ingredients = getConfig().getConfigurationSection("wireless-terminal-recipe.ingredients");
+        if (ingredients == null) {
+            applyDefaultWirelessRecipeIngredients(recipe);
+            return;
+        }
+
+        for (String keyChar : ingredients.getKeys(false)) {
+            if (keyChar.length() != 1) {
+                getLogger().warning("Ignoring invalid wireless recipe ingredient key '" + keyChar + "'.");
+                continue;
+            }
+
+            setRecipeIngredient(recipe, keyChar.charAt(0), ingredients.getString(keyChar), "wireless terminal");
+        }
+    }
+
+    private void applyConfiguredWandRecipeIngredients(ShapedRecipe recipe) {
+        ConfigurationSection ingredients = getConfig().getConfigurationSection("storage-wand-recipe.ingredients");
+        if (ingredients == null) {
+            applyDefaultWandRecipeIngredients(recipe);
+            return;
+        }
+
+        for (String keyChar : ingredients.getKeys(false)) {
+            if (keyChar.length() != 1) {
+                getLogger().warning("Ignoring invalid storage wand recipe ingredient key '" + keyChar + "'.");
+                continue;
+            }
+
+            setRecipeIngredient(recipe, keyChar.charAt(0), ingredients.getString(keyChar), "storage wand");
+        }
+    }
+
+    private void applyConfiguredTerminalRecipeIngredients(ShapedRecipe recipe) {
+        ConfigurationSection ingredients = getConfig().getConfigurationSection("storage-terminal-recipe.ingredients");
+        if (ingredients == null) {
+            applyDefaultTerminalRecipeIngredients(recipe);
+            return;
+        }
+
+        for (String keyChar : ingredients.getKeys(false)) {
+            if (keyChar.length() != 1) {
+                getLogger().warning("Ignoring invalid storage terminal recipe ingredient key '" + keyChar + "'.");
+                continue;
+            }
+
+            setRecipeIngredient(recipe, keyChar.charAt(0), ingredients.getString(keyChar), "storage terminal");
+        }
+    }
+
+    private void setRecipeIngredient(ShapedRecipe recipe, char key, String materialName, String recipeName) {
+        if (materialName != null && (materialName.equalsIgnoreCase("PLANKS") || materialName.equalsIgnoreCase("#PLANKS"))) {
+            recipe.setIngredient(key, new RecipeChoice.MaterialChoice(PLANK_MATERIALS));
+            return;
+        }
+
+        Material ingredient = materialName == null ? null : Material.matchMaterial(materialName);
+        if (ingredient == null) {
+            getLogger().warning("Invalid material '" + materialName + "' in " + recipeName + " recipe.");
+            return;
+        }
+        recipe.setIngredient(key, ingredient);
+    }
+
+    private void applyDefaultWirelessRecipeIngredients(ShapedRecipe recipe) {
+        recipe.setIngredient('P', new RecipeChoice.MaterialChoice(PLANK_MATERIALS));
+        recipe.setIngredient('R', Material.REPEATER);
+        recipe.setIngredient('C', Material.CHEST);
+        recipe.setIngredient('G', Material.GLOWSTONE);
+        recipe.setIngredient('L', Material.GLASS);
+        recipe.setIngredient('E', Material.ENDER_PEARL);
+    }
+
+    private void applyDefaultWandRecipeIngredients(ShapedRecipe recipe) {
+        recipe.setIngredient('C', Material.CHEST);
+        recipe.setIngredient('S', Material.STICK);
+    }
+
+    private void applyDefaultTerminalRecipeIngredients(ShapedRecipe recipe) {
+        recipe.setIngredient('P', new RecipeChoice.MaterialChoice(PLANK_MATERIALS));
+        recipe.setIngredient('R', Material.REPEATER);
+        recipe.setIngredient('C', Material.CHEST);
+        recipe.setIngredient('G', Material.GLOWSTONE);
+        recipe.setIngredient('L', Material.GLASS);
+    }
+
+    private String[] getDefaultWirelessRecipeShape() {
+        return new String[] {"PRP", "CGL", "PEP"};
+    }
+
+    private String[] getDefaultWandRecipeShape() {
+        return new String[] {" C", "S "};
+    }
+
+    private String[] getDefaultTerminalRecipeShape() {
+        return new String[] {"PRP", "CGL", "PRP"};
+    }
+
+    private void startSenderChestTask() {
+        int interval = configManager.getSenderChestTransferInterval() * 20;
+        senderChestTaskId = getServer().getScheduler().runTaskTimer(this, () -> {
+            for (Network network : networkManager.getAllNetworks()) {
+                for (Location senderLoc : network.getSenderChestLocations()) {
+
+                    if (!senderLoc.getWorld().isChunkLoaded(senderLoc.getBlockX() >> 4, senderLoc.getBlockZ() >> 4)) {
+                        continue;
+                    }
+
+                    if (senderLoc.getBlock().getState() instanceof org.bukkit.inventory.InventoryHolder holder) {
+                        Inventory senderInv = holder.getInventory();
+                        for (int i = 0; i < senderInv.getSize(); i++) {
+                            ItemStack item = senderInv.getItem(i);
+                            if (item != null && item.getType() != Material.AIR) {
+                                ItemStack remaining = network.addToNetwork(item.clone());
+                                if (remaining == null || remaining.getAmount() == 0) {
+                                    senderInv.setItem(i, null);
+                                } else {
+                                    item.setAmount(remaining.getAmount());
+                                }
+                            }
+                        }
+                    } else {
+                        network.removeSenderChest(senderLoc);
+                        networkManager.removeFromLocationIndex(senderLoc);
+                        getLogger().info("Pruned non-inventory block at " + senderLoc.toString() + " from a network because it was no longer a container.");
+                    }
+                }
+            }
+        }, 100L, interval).getTaskId();
+    }
+
+    private void startAutoSaveTask() {
+        int interval = configManager.getAutoSaveInterval() * 60 * 20;
+        if (interval > 0) {
+            autoSaveTaskId = getServer().getScheduler().runTaskTimer(this, () -> {
+                getLogger().info("Auto-saving network data...");
+                networkManager.saveAllNetworks();
+                getLogger().info("Auto-save complete.");
+            }, interval, interval).getTaskId();
+        }
+    }
+
+    public static NetworkStoragePlugin getInstance() {
+        return instance;
+    }
+
+    public NetworkManager getNetworkManager() {
+        return networkManager;
+    }
+
+    public ConfigManager getConfigManager() {
+        return configManager;
+    }
+
+    public SearchManager getSearchManager() {
+        return searchManager;
+    }
+
+    public LanguageManager getLanguageManager() {
+        return languageManager;
+    }
+
+    public ChestInteractListener getChestInteractListener() {
+        return chestInteractListener;
+    }
+
+    public WirelessTerminalListener getWirelessTerminalListener() {
+        return wirelessTerminalListener;
+    }
+}

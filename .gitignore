@@ -1,0 +1,27 @@
+# --- Local dev runtime (Paper server, worlds, logs) ---
+dev-server/
+
+# --- Bundled JDK / Maven (download separately or use system installs) ---
+tools/
+
+# --- Reference / nested clones (optional local copies) ---
+reference/
+
+# --- Build outputs ---
+NetworkStorage/target/
+NetworkStorage/dependency-reduced-pom.xml
+
+# --- Generated distributables (rebuild with scripts) ---
+*.jar
+NetworkStorage.zip
+
+# --- OS / IDE ---
+.DS_Store
+Thumbs.db
+.idea/
+*.iml
+
+# --- Logs & temp ---
+*.log
+*.tmp
+*.bak

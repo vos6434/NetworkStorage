@@ -1,0 +1,19 @@
+{
+  "model": {
+    "type": "minecraft:range_dispatch",
+    "property": "minecraft:custom_model_data",
+    "entries": [
+      {
+        "threshold": 10105,
+        "model": {
+          "type": "minecraft:model",
+          "model": "networkstorage:item/gui/terminal/info"
+        }
+      }
+    ],
+    "fallback": {
+      "type": "minecraft:model",
+      "model": "minecraft:item/book"
+    }
+  }
+}

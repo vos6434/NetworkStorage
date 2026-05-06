@@ -1,0 +1,31 @@
+{
+  "providers": [
+    {
+      "type": "space",
+      "advances": {
+        "\uE000": -8,
+        "\uE001": -185,
+        "\uE002": 16,
+        "\uE003": -100
+      }
+    },
+    {
+      "type": "bitmap",
+      "file": "networkstorage:font/menu_container.png",
+      "ascent": 19,
+      "height": 256,
+      "chars": [
+        "\uE100"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "networkstorage:font/page_digits.png",
+      "ascent": -99,
+      "height": 8,
+      "chars": [
+        "\uE110\uE111\uE112\uE113\uE114\uE115\uE116\uE117\uE118\uE119\uE11A"
+      ]
+    }
+  ]
+}
